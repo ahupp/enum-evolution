@@ -1,0 +1,11 @@
+error[E0599]: no variant or associated item named `Zero` found for enum `Bar` in the current scope
+  --> tests/ui/removed_variant_fail.rs:15:18
+   |
+4  | /     enum Foo {
+5  | |         Zero,
+6  | |         One(usize),
+7  | |     }
+   | |_____- variant or associated item `Zero` not found for this enum
+...
+15 |       let _ = Bar::Zero;
+   |                    ^^^^ variant or associated item not found in `Bar`
