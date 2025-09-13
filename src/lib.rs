@@ -10,6 +10,8 @@ mod kw {
     syn::custom_keyword!(derive);
     syn::custom_keyword!(from);
     syn::custom_keyword!(remove);
+    syn::custom_keyword!(update);
+    syn::custom_keyword!(add);
 }
 
 struct EnumEvolution {
@@ -21,6 +23,8 @@ struct DerivedEnum {
     name: Ident,
     source: Ident,
     removed: Vec<Ident>,
+    updated: Vec<Variant>,
+    added: Vec<Variant>,
 }
 
 impl Parse for EnumEvolution {
@@ -40,16 +44,30 @@ impl Parse for DerivedEnum {
         let name: Ident = input.parse()?;
         input.parse::<kw::from>()?;
         let source: Ident = input.parse()?;
-        let content; 
+        let content;
         braced!(content in input);
         let mut removed = Vec::new();
+        let mut updated = Vec::new();
+        let mut added = Vec::new();
         while !content.is_empty() {
-            content.parse::<kw::remove>()?;
-            let ident: Ident = content.parse()?;
-            removed.push(ident);
+            if content.peek(kw::remove) {
+                content.parse::<kw::remove>()?;
+                let ident: Ident = content.parse()?;
+                removed.push(ident);
+            } else if content.peek(kw::update) {
+                content.parse::<kw::update>()?;
+                let var: Variant = content.parse()?;
+                updated.push(var);
+            } else if content.peek(kw::add) {
+                content.parse::<kw::add>()?;
+                let var: Variant = content.parse()?;
+                added.push(var);
+            } else {
+                return Err(content.error("expected `remove`, `update`, or `add`"));
+            }
             let _ = content.parse::<Token![;]>().ok();
         }
-        Ok(DerivedEnum { name, source, removed })
+        Ok(DerivedEnum { name, source, removed, updated, added })
     }
 }
 
@@ -67,12 +85,16 @@ pub fn enum_evolution(input: TokenStream) -> TokenStream {
         if let Some(src) = known.get(&d.source.to_string()) {
             let removed: std::collections::HashSet<String> =
                 d.removed.iter().map(|i| i.to_string()).collect();
-            let variants: syn::punctuated::Punctuated<Variant, Token![,]> = src
-                .variants
-                .iter()
-                .filter(|v| !removed.contains(&v.ident.to_string()))
-                .cloned()
-                .collect();
+            let mut variants: Vec<Variant> = src.variants.iter().cloned().collect();
+            variants.retain(|v| !removed.contains(&v.ident.to_string()));
+            for var in d.updated {
+                if let Some(existing) = variants.iter_mut().find(|v| v.ident == var.ident) {
+                    *existing = var;
+                }
+            }
+            variants.extend(d.added.into_iter());
+            let variants: syn::punctuated::Punctuated<Variant, Token![,]> =
+                variants.into_iter().collect();
 
             let mut new_enum = src.clone();
             new_enum.ident = d.name.clone();
